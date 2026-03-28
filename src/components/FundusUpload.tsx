@@ -140,6 +140,55 @@ export default function FundusUpload({ patientId, onScreeningCreated }: FundusUp
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Image Selection / Capture */}
+        {!preview ? (
+          <div className="grid grid-cols-2 gap-4 animate-in">
+            <Button
+              variant="outline"
+              className="h-24 flex-col gap-2 border-dashed border-2 hover:border-primary hover:bg-primary/5 transition-all"
+              onClick={() => inputRef.current?.click()}
+            >
+              <Upload className="w-6 h-6 text-muted-foreground" />
+              <span className="text-xs font-semibold">Upload Photo</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-24 flex-col gap-2 border-dashed border-2 hover:border-primary hover:bg-primary/5 transition-all"
+              onClick={() => inputRef.current?.setAttribute('capture', 'environment')}
+            >
+              <Camera className="w-6 h-6 text-muted-foreground" />
+              <span className="text-xs font-semibold">Camera</span>
+            </Button>
+            <input
+              type="file"
+              ref={inputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            />
+          </div>
+        ) : (
+          <div className="space-y-4 animate-in">
+            <div className="relative aspect-[4/3] rounded-xl overflow-hidden border-4 border-white shadow-xl">
+              <img src={preview} alt="Fundus Preview" className="w-full h-full object-cover" />
+              <Button
+                size="icon"
+                variant="destructive"
+                className="absolute top-2 right-2 w-8 h-8 rounded-full shadow-lg"
+                onClick={resetFile}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <ImageQualityCheck 
+              file={file!} 
+              onPass={() => setQualityPassed(true)} 
+              onRetake={resetFile}
+            />
+          </div>
+        )}
+
         {/* Clinical Measurements Section */}
         <div className="pt-2 border-t space-y-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
