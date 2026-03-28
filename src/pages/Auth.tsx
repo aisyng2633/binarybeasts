@@ -46,7 +46,7 @@ export default function Auth() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-2">
             <ShieldCheck className="w-7 h-7 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold font-display tracking-tight">RetinAI</h1>
+          <h1 className="text-3xl font-bold font-display tracking-tight">Retinex</h1>
           <p className="text-muted-foreground text-sm">AI-Assisted Diabetic Retinopathy Screening</p>
         </div>
 

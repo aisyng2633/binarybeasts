@@ -68,7 +68,12 @@ export default function FundusUpload({ patientId, onScreeningCreated }: FundusUp
         console.error('Edge function error:', aiErr);
         toast.error('AI processing failed, but screening is saved.');
       } else {
-        toast.success(`Screening completed — Risk: ${aiResponse.unifiedRisk?.toUpperCase()}`);
+        const risk = aiResponse.unifiedRisk?.toUpperCase();
+        const drClass = aiResponse.drClass;
+        toast.success(`Screening completed — Unified Risk: ${risk} (DR Grade: ${drClass}/4)`);
+        if (risk === 'HIGH') {
+          toast.warning('Immediate specialist referral recommended.', { duration: 6000 });
+        }
       }
 
       resetFile();

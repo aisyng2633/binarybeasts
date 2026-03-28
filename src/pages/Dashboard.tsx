@@ -42,7 +42,7 @@ export default function Dashboard() {
         <div className="container flex h-14 items-center justify-between px-4">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-primary" />
-            <h1 className="text-lg font-bold font-display">RetinAI</h1>
+            <h1 className="text-lg font-bold font-display">Retinex</h1>
             <span className="text-xs text-muted-foreground hidden sm:inline">CDSS</span>
           </div>
           <div className="flex items-center gap-2">

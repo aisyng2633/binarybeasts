@@ -5,7 +5,7 @@ import torch
 import io
 import base64
 
-app = FastAPI(title="Sahyog DR AI Engine")
+app = FastAPI(title="Retinex DR AI Engine")
 
 # Enable CORS for local development and Edge Functions
 app.add_middleware(
@@ -56,7 +56,7 @@ async def predict_dr(file: UploadFile = File(...)):
             "dr_class": dr_class,
             "confidence": confidence,
             "heatmap": heatmap_b64,
-            "provider": "sahyog-ai-engine"
+            "provider": "retinex-ai-engine"
         }
     except Exception as e:
         print(f"Prediction error: {e}")

@@ -31,6 +31,8 @@ export default function DoctorReviewPanel({ screeningId, onClose }: DoctorReview
     clinical_notes: '',
     ai_override: false,
     patient_summary: '',
+    posterior_annotation: '',
+    anterior_annotation: '',
   });
 
   useEffect(() => {
@@ -53,6 +55,8 @@ export default function DoctorReviewPanel({ screeningId, onClose }: DoctorReview
           clinical_notes: r.clinical_notes || '',
           ai_override: r.ai_override || false,
           patient_summary: r.patient_summary || '',
+          posterior_annotation: r.posterior_annotation || '',
+          anterior_annotation: r.anterior_annotation || '',
         });
       }
       setLoading(false);
@@ -78,6 +82,8 @@ export default function DoctorReviewPanel({ screeningId, onClose }: DoctorReview
           unifiedRisk: form.final_risk || ai?.unified_risk,
           doctorNotes: form.clinical_notes,
           diagnosis: form.final_diagnosis,
+          posteriorAnnotation: form.posterior_annotation,
+          anteriorAnnotation: form.anterior_annotation,
         },
       });
       if (error) throw error;
@@ -102,6 +108,8 @@ export default function DoctorReviewPanel({ screeningId, onClose }: DoctorReview
           clinical_notes: form.clinical_notes || null,
           ai_override: form.ai_override,
           patient_summary: form.patient_summary || null,
+          posterior_annotation: form.posterior_annotation || null,
+          anterior_annotation: form.anterior_annotation || null,
         }).eq('id', existingReview.id);
         if (error) throw error;
       } else {
@@ -113,6 +121,8 @@ export default function DoctorReviewPanel({ screeningId, onClose }: DoctorReview
           clinical_notes: form.clinical_notes || null,
           ai_override: form.ai_override,
           patient_summary: form.patient_summary || null,
+          posterior_annotation: form.posterior_annotation || null,
+          anterior_annotation: form.anterior_annotation || null,
         });
         if (error) throw error;
       }
@@ -220,7 +230,18 @@ export default function DoctorReviewPanel({ screeningId, onClose }: DoctorReview
 
             <div className="space-y-2">
               <Label>Clinical Notes</Label>
-              <Textarea value={form.clinical_notes} onChange={(e) => setForm({ ...form, clinical_notes: e.target.value })} placeholder="Observations, annotations..." rows={3} />
+              <Textarea value={form.clinical_notes} onChange={(e) => setForm({ ...form, clinical_notes: e.target.value })} placeholder="Observations, recommendations..." rows={2} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs">Posterior Retina</Label>
+                <Textarea value={form.posterior_annotation} onChange={(e) => setForm({ ...form, posterior_annotation: e.target.value })} placeholder="Macula, discs..." rows={2} className="text-sm" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Anterior Retina</Label>
+                <Textarea value={form.anterior_annotation} onChange={(e) => setForm({ ...form, anterior_annotation: e.target.value })} placeholder="Vessels, periphery..." rows={2} className="text-sm" />
+              </div>
             </div>
 
             <div className="flex items-center gap-2">

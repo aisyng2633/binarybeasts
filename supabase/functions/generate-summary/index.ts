@@ -9,7 +9,12 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { patientName, age, gender, drClass, drLabel, confidence, diabetesRisk, unifiedRisk, doctorNotes, diagnosis } = await req.json();
+    const { 
+      patientName, age, gender, drClass, drLabel, 
+      confidence, diabetesRisk, unifiedRisk, 
+      doctorNotes, diagnosis,
+      posteriorAnnotation, anteriorAnnotation
+    } = await req.json();
 
     const CLINICAL_AI_API_KEY = Deno.env.get("CLINICAL_AI_API_KEY");
     if (!CLINICAL_AI_API_KEY) throw new Error("CLINICAL_AI_API_KEY is not configured");
@@ -22,14 +27,18 @@ Eye Screening Results:
 - AI Confidence: ${(confidence * 100).toFixed(1)}%
 - Diabetes Risk Score: ${(diabetesRisk * 100).toFixed(1)}%
 - Overall Risk Level: ${unifiedRisk}
-${diagnosis ? `Doctor's Diagnosis: ${diagnosis}` : ''}
-${doctorNotes ? `Doctor's Notes: ${doctorNotes}` : ''}
+
+Clinical Findings:
+${diagnosis ? `- Final Diagnosis: ${diagnosis}` : ''}
+${posteriorAnnotation ? `- Posterior Retina: ${posteriorAnnotation}` : ''}
+${anteriorAnnotation ? `- Anterior Retina: ${anteriorAnnotation}` : ''}
+${doctorNotes ? `- Doctor's Observations: ${doctorNotes}` : ''}
 
 Include:
-1. What was found in simple terms
+1. What was found in simple, reassuring terms
 2. What the risk level means
-3. What the patient should do next
-4. When to follow up`;
+3. Clear next steps (actionable)
+4. Recommended follow-up timeline`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -38,13 +47,14 @@ Include:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.0-flash",
         messages: [
-          { role: "system", content: "You are a compassionate medical communicator. Write patient-friendly summaries in simple, reassuring language. Avoid medical jargon. Be clear about next steps." },
+          { role: "system", content: "You are a compassionate medical communicator for rural health clinics. Write patient-friendly summaries in simple, reassuring language. If the patient needs to see a specialist, explain why in simple terms. Avoid complex medical jargon." },
           { role: "user", content: prompt },
         ],
       }),
     });
+
 
     if (!response.ok) {
       if (response.status === 429) {

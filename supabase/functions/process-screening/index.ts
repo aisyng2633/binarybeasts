@@ -40,7 +40,7 @@ async function analyzeWithClinicalAI(imageBase64: string): Promise<{ dr_class: n
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.0-flash",
         messages: [{
           role: "user",
           content: [
@@ -133,16 +133,29 @@ async function analyzeWithFallback(imageData: ArrayBuffer): Promise<{ dr_class: 
   };
 }
 
-// Simulated AIIMS CDSS API integration
+// Simulated AIIMS CDSS API integration for systemic diabetes risk analysis
 async function getAIIMSDiabetesRisk(patient: any): Promise<number> {
-  console.log("[CDSS] Requesting AIIMS CDSS Risk Analysis...");
+  console.log(`[CDSS] Requesting AIIMS CDSS Risk Analysis for Patient: ${patient?.name || 'Unknown'}`);
   
-  let risk = 0.2;
-  if (patient?.age > 50) risk += 0.25;
-  if (patient?.diabetes_history === "yes" || patient?.diabetes_history === "Type 2") risk += 0.4;
+  // In a real scenario, this would be a fetch() call to the AIIMS CDSS API
+  // baseURL: https://cdss.aiims.edu/api/v1/risk-analysis
+  
+  let risk = 0.15;
+  if (patient?.age > 45) risk += 0.2;
+  if (patient?.age > 65) risk += 0.15;
+  
+  const history = (patient?.diabetes_history || "").toLowerCase();
+  if (history.includes("yes") || history.includes("type 2") || history.includes("confirmed")) {
+    risk += 0.45;
+  } else if (history.includes("pre") || history.includes("borderline")) {
+    risk += 0.2;
+  }
+  
   if (patient?.gender === "male") risk += 0.05;
   
-  return Math.min(risk + Math.random() * 0.1, 0.95);
+  // Simulate some variance
+  const variance = (Math.random() * 0.1) - 0.05;
+  return Math.min(Math.max(risk + variance, 0.05), 0.98);
 }
 
 serve(async (req) => {
@@ -174,12 +187,10 @@ serve(async (req) => {
     let imageData: ArrayBuffer;
 
     try {
-      // Try fetching public URL directly
       const imgResponse = await fetch(imageUrl);
       if (!imgResponse.ok) throw new Error("Failed to fetch image");
       imageData = await imgResponse.arrayBuffer();
     } catch {
-      // Fallback: try storage download
       const path = imageUrl.split("/fundus-images/").pop();
       if (!path) throw new Error("Cannot determine image path");
       const { data: blob, error: dlError } = await supabaseClient.storage.from("fundus-images").download(path);
@@ -221,14 +232,19 @@ serve(async (req) => {
     // Step 2: CDSS Diabetes Risk (AIIMS integration)
     const diabetesRisk = await getAIIMSDiabetesRisk(screening.patients);
 
-    // Step 3: Risk Fusion
+    // Step 3: Risk Fusion (Weights: AI DR 60%, CDSS Risk 40%)
     let unifiedRisk: "low" | "moderate" | "high" = "low";
-    const combinedScore = (aiData.dr_class / 4) * 0.6 + diabetesRisk * 0.4;
-    if (combinedScore >= 0.6 || aiData.dr_class >= 3) {
+    const drNormalized = aiData.dr_class / 4; // 0 to 1
+    const combinedScore = (drNormalized * 0.6) + (diabetesRisk * 0.4);
+    
+    // High Risk if classification is Severe/Proliferative OR combined score is high
+    if (aiData.dr_class >= 3 || combinedScore >= 0.65) {
       unifiedRisk = "high";
-    } else if (combinedScore >= 0.3 || aiData.dr_class >= 1) {
+    } else if (aiData.dr_class >= 1 || combinedScore >= 0.35) {
       unifiedRisk = "moderate";
     }
+
+    console.log(`[Fusion] Combined Score: ${combinedScore.toFixed(3)} -> Unified Risk: ${unifiedRisk.toUpperCase()}`);
 
     // Step 4: Save results
     const { error: aiResultsError } = await supabaseClient
@@ -246,20 +262,37 @@ serve(async (req) => {
 
     await supabaseClient.from("screenings").update({ status: "completed" }).eq("id", screeningId);
 
-    // Step 5: SMS Notification (AI SMS Simulation)
+    // Step 5: SMS Notification (Twilio / Fast2SMS Integration Placeholder)
     const contact = screening.patients?.contact;
     if (contact) {
-      const smsMessage = `SAHYOG: Eye screening completed for ${screening.patients.name}. Risk: ${unifiedRisk.toUpperCase()}. ${
-        unifiedRisk === "high" ? "Please visit an Eye specialist urgently (within 1 week)." : 
-        unifiedRisk === "moderate" ? "Regular follow-up in 3 months recommended." : 
-        "No immediate action needed. Annual check recommended."
-      }`;
-      console.log(`[SMS] Sending to ${contact}: ${smsMessage}`);
+      const hospitalName = "Retinex Screening Clinic";
+      const riskMsg = unifiedRisk === "high" ? "URGENT: High Risk detected. Please visit an ophthalmologist within 7 days." : 
+                      unifiedRisk === "moderate" ? "MODERATE Risk: Please schedule a follow-up visit within 1 month." : 
+                      "LOW Risk: Routine eye check-up recommended every 12 months.";
+      
+      const smsMessage = `Health Alert: ${screening.patients.name}, your Diabetic Retinopathy screening at ${hospitalName} is complete. ${riskMsg}`;
+      
+      console.log(`[SMS] Sending to ${contact} via SMS API Gateway...`);
+      console.log(`[SMS CONTENT] ${smsMessage}`);
+      
+      // In production:
+      // await fetch("https://api.fast2sms.com/dev/bulkV2", { 
+      //   method: "POST", 
+      //   headers: { "authorization": Deno.env.get("FAST2SMS_KEY") },
+      //   body: JSON.stringify({ message: smsMessage, numbers: contact })
+      // });
     }
 
-    return new Response(JSON.stringify({ success: true, unifiedRisk, provider: aiData.provider, drClass: aiData.dr_class }), {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      unifiedRisk, 
+      provider: aiData.provider, 
+      drClass: aiData.dr_class,
+      diabetesRisk 
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (e) {
     console.error("Error in process-screening:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Internal Server Error" }), {
