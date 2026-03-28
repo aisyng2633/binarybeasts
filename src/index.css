@@ -109,3 +109,23 @@
   .print\:space-y-3 > * + * { margin-top: 0.75rem; }
   .print\:border { border: 1px solid currentColor; }
 }
+
+@layer utilities {
+  .glass {
+    @apply bg-white/70 dark:bg-black/40 backdrop-blur-md border border-white/20 dark:border-white/10;
+  }
+  .glass-card {
+    @apply glass shadow-xl hover:shadow-2xl transition-all duration-300;
+  }
+  .animate-in {
+    animation: slideUp 0.4s ease-out forwards;
+  }
+  .delay-100 { animation-delay: 0.1s; }
+  .delay-200 { animation-delay: 0.2s; }
+  .delay-300 { animation-delay: 0.3s; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

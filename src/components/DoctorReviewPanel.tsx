@@ -108,6 +108,16 @@ export default function DoctorReviewPanel({ screeningId, onClose }: DoctorReview
           screeningDate: screening.created_at,
           screeningId: screening.id,
           reportType: 'both',
+          fbs: screening.fbs,
+          ppbs: screening.ppbs,
+          rbs: screening.rbs,
+          hba1c: screening.hba1c,
+          systolic_bp: screening.systolic_bp,
+          diastolic_bp: screening.diastolic_bp,
+          heart_rate: screening.heart_rate,
+          weight: screening.weight,
+          height: screening.height,
+          diabetesDuration: screening.diabetes_duration,
         },
       });
       if (error) throw error;
@@ -240,6 +250,68 @@ export default function DoctorReviewPanel({ screeningId, onClose }: DoctorReview
               {patient?.contact && <span className="ml-2">📱 {patient.contact}</span>}
             </p>
           </div>
+
+          {/* Clinical Measurements Display */}
+          {(screening.fbs || screening.ppbs || screening.rbs || screening.hba1c || screening.systolic_bp) && (
+            <div className="p-3 rounded-lg border bg-blue-50/30 dark:bg-blue-900/10 space-y-2">
+              <p className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                🩸 Clinical Measurements
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-2 gap-x-4 text-sm">
+                {screening.fbs && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase">FBS</p>
+                    <p className="font-medium">{screening.fbs} <span className="text-[10px] text-muted-foreground">mg/dL</span></p>
+                  </div>
+                )}
+                {screening.ppbs && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase">PPBS</p>
+                    <p className="font-medium">{screening.ppbs} <span className="text-[10px] text-muted-foreground">mg/dL</span></p>
+                  </div>
+                )}
+                {screening.rbs && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase">RBS</p>
+                    <p className="font-medium">{screening.rbs} <span className="text-[10px] text-muted-foreground">mg/dL</span></p>
+                  </div>
+                )}
+                {screening.hba1c && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase">HbA1c</p>
+                    <p className="font-medium text-destructive">{screening.hba1c}%</p>
+                  </div>
+                )}
+                {(screening.systolic_bp || screening.diastolic_bp) && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase">Blood Pressure</p>
+                    <p className="font-medium">{screening.systolic_bp}/{screening.diastolic_bp} <span className="text-[10px] text-muted-foreground">mmHg</span></p>
+                  </div>
+                )}
+                {screening.heart_rate && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase">Heart Rate</p>
+                    <p className="font-medium">{screening.heart_rate} <span className="text-[10px] text-muted-foreground">BPM</span></p>
+                  </div>
+                )}
+                {(screening.weight || screening.height) && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase">BMI / Weight</p>
+                    <p className="font-medium">
+                      {screening.weight}kg 
+                      {screening.weight && screening.height && ` (BMI: ${(screening.weight / Math.pow(screening.height / 100, 2)).toFixed(1)})`}
+                    </p>
+                  </div>
+                )}
+                {screening.diabetes_duration && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase">DM Duration</p>
+                    <p className="font-medium">{screening.diabetes_duration} Years</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Fundus image */}
           <img

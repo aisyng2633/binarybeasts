@@ -18,6 +18,9 @@ serve(async (req) => {
       heatmapRegions, diabetesHistory, contact,
       screeningDate, screeningId,
       reportType, // 'clinical' | 'patient' | 'both'
+      fbs, ppbs, rbs, hba1c,
+      systolic_bp, diastolic_bp, heart_rate,
+      weight, height, diabetesDuration,
     } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -27,8 +30,16 @@ serve(async (req) => {
 Patient: ${patientName}, ${age} years old, ${gender}
 Contact: ${contact || 'N/A'}
 Diabetes History: ${diabetesHistory || 'Not reported'}
+Diabetes Duration: ${diabetesDuration || 'N/A'} years
 Screening Date: ${screeningDate || new Date().toLocaleDateString()}
 Screening ID: ${screeningId || 'N/A'}
+
+Clinical Measurements:
+- Blood Sugar: FBS: ${fbs || 'N/A'}, PPBS: ${ppbs || 'N/A'}, RBS: ${rbs || 'N/A'} mg/dL
+- HbA1c: ${hba1c || 'N/A'}%
+- Blood Pressure: ${systolic_bp ? `${systolic_bp}/${diastolic_bp}` : 'N/A'} mmHg
+- Heart Rate: ${heart_rate || 'N/A'} BPM
+- Weight/Height: ${weight || 'N/A'}kg / ${height || 'N/A'}cm
 
 Eye Screening Results:
 - DR Classification: ${drLabel} (Grade ${drClass}/4)
@@ -75,7 +86,7 @@ Use precise medical terminology. Be thorough but structured. Include confidence 
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "google/gemini-2.0-flash",
           messages: [
             { role: "system", content: "You are a senior ophthalmologist generating a formal clinical report for diabetic retinopathy screening. Use precise medical language, structured sections, and include all clinical details. This report will be saved, printed, and used for medical records." },
             { role: "user", content: clinicalPrompt },
@@ -126,7 +137,7 @@ Keep it under 250 words. Use warm, reassuring tone. Avoid ALL medical jargon. Us
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "google/gemini-2.0-flash",
           messages: [
             { role: "system", content: "You are a compassionate health communicator at a rural clinic. Write in simple, warm, reassuring language that a person with basic education can easily understand. Avoid ALL medical jargon. Be caring and clear. Use short sentences." },
             { role: "user", content: patientPrompt },

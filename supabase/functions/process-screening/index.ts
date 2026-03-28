@@ -118,12 +118,20 @@ Respond as JSON: {"regions": [{"location": "...", "lesion": "...", "severity": "
 }
 
 // AIIMS CDSS Diabetes Risk Analysis via AI
-async function analyzeDiabetesRisk(patient: any, apiKey: string): Promise<{ risk_score: number; analysis: string }> {
+async function analyzeDiabetesRisk(patient: any, vitals: any, apiKey: string): Promise<{ risk_score: number; analysis: string }> {
   const patientData = {
     age: patient?.age || 0,
     gender: patient?.gender || "unknown",
     diabetes_history: patient?.diabetes_history || "none reported",
     name: patient?.name || "Unknown",
+    vitals: {
+      fbs: vitals?.fbs,
+      ppbs: vitals?.ppbs,
+      rbs: vitals?.rbs,
+      hba1c: vitals?.hba1c,
+      bp: vitals?.systolic_bp ? `${vitals.systolic_bp}/${vitals.diastolic_bp}` : "unknown",
+      duration: vitals?.diabetes_duration,
+    }
   };
 
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -133,13 +141,13 @@ async function analyzeDiabetesRisk(patient: any, apiKey: string): Promise<{ risk
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
+      model: "google/gemini-2.0-flash",
       messages: [
         {
           role: "system",
           content: `You are the AIIMS Clinical Decision Support System (CDSS) for diabetes risk assessment. 
-Analyze patient data and provide a diabetes risk score based on clinical guidelines.
-Consider: age, gender, diabetes history, family history, lifestyle indicators.
+Analyze patient data and vitals to provide a diabetes risk score based on clinical guidelines.
+Consider: blood sugar levels, HbA1c, blood pressure, duration of diabetes, and patient history.
 Respond ONLY with valid JSON: {"risk_score": <0.0-1.0>, "analysis": "<brief risk factors>"}`
         },
         {
@@ -148,6 +156,12 @@ Respond ONLY with valid JSON: {"risk_score": <0.0-1.0>, "analysis": "<brief risk
 - Age: ${patientData.age} years
 - Gender: ${patientData.gender}
 - Diabetes History: ${patientData.diabetes_history}
+- DM Duration: ${patientData.vitals.duration} years
+- FBS: ${patientData.vitals.fbs} mg/dL
+- PPBS: ${patientData.vitals.ppbs} mg/dL
+- RBS: ${patientData.vitals.rbs} mg/dL
+- HbA1c: ${patientData.vitals.hba1c}%
+- Blood Pressure: ${patientData.vitals.bp} mmHg
 
 Provide a risk score (0.0 = no risk, 1.0 = highest risk) based on AIIMS clinical guidelines for diabetic retinopathy screening.`
         }
@@ -160,13 +174,15 @@ Provide a risk score (0.0 = no risk, 1.0 = highest risk) based on AIIMS clinical
     console.warn("[CDSS] AI analysis failed, using rule-based fallback");
     // Fallback: rule-based
     let risk = 0.15;
-    if (patientData.age > 45) risk += 0.2;
-    if (patientData.age > 65) risk += 0.15;
+    if (patientData.age > 45) risk += 0.1;
+    if (patientData.vitals.hba1c && parseFloat(patientData.vitals.hba1c) > 7) risk += 0.3;
+    if (patientData.vitals.fbs && parseFloat(patientData.vitals.fbs) > 126) risk += 0.2;
+    if (patientData.vitals.duration && parseInt(patientData.vitals.duration) > 10) risk += 0.2;
+    
     const history = patientData.diabetes_history.toLowerCase();
-    if (history.includes("yes") || history.includes("type 2") || history.includes("confirmed")) risk += 0.45;
-    else if (history.includes("pre") || history.includes("borderline")) risk += 0.2;
-    if (patientData.gender === "male") risk += 0.05;
-    return { risk_score: Math.min(Math.max(risk, 0.05), 0.98), analysis: "Rule-based assessment" };
+    if (history.includes("yes") || history.includes("confirmed")) risk += 0.2;
+    
+    return { risk_score: Math.min(Math.max(risk, 0.05), 0.98), analysis: "Rule-based assessment (fallback)" };
   }
 
   const data = await response.json();
@@ -234,7 +250,7 @@ serve(async (req) => {
     // Step 2: AIIMS CDSS Diabetes Risk Analysis (AI Text)
     const [drResult, cdssResult] = await Promise.all([
       analyzeFundusWithAI(imageBase64, LOVABLE_API_KEY),
-      analyzeDiabetesRisk(screening.patients, LOVABLE_API_KEY),
+      analyzeDiabetesRisk(screening.patients, screening, LOVABLE_API_KEY),
     ]);
 
     console.log(`[Fundus AI] DR Class: ${drResult.dr_class}, Confidence: ${drResult.confidence.toFixed(3)}, Findings: ${drResult.findings}`);
