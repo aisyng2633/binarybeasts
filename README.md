@@ -9,38 +9,121 @@
 Retinex follows a modern, scalable serverless architecture:
 
 ```mermaid
-graph TD
-    subgraph "Frontend (Vite + React)"
-        A[Mobile Portal / Dashboard]
-    end
+flowchart TD
+    A[Frontend]
     
-    subgraph "Supabase Backend"
-        B[Authentication]
-        C[PostgreSQL Database]
-        D[Edge Functions]
-        E[Storage (Fundus Images)]
-    end
+    B[API Layer]
     
-    subgraph "AI Ecosystem"
-        F[Clinical AI Gateway (Gemini 2.0)]
-        G[AIIMS CDSS (CDSS Simulation)]
-        H[AI Engine (PyTorch / EfficientNet)]
-    end
+    C[AI Engine - Fundus Analysis]
+    C1[DR Classification Model]
+    C2[Grad-CAM Generator]
+    
+    D[CDSS Engine - Diabetes Analysis]
+    
+    E[Fusion Layer - Combine Risk Scores]
+    
+    F[Doctor Dashboard]
+    G[Annotation and Diagnosis]
+    
+    H[Backend - Supabase & Node.js]
+    
+    I[Gemini API - Patient Summary]
     
     A --> B
-    A --> E
-    A --> D
-    D --> C
-    D --> F
-    D --> G
-    D --> H
-    D --> I[SMS Notification Gateway]
+    B --> C
+    B --> D
+    
+    C --> C1
+    C --> C2
+    
+    C --> E
+    D --> E
+    
+    E --> F --> G
+    
+    G --> H
+    H --> I
+    I --> A
 ```
 
-- **Frontend**: React + TypeScript + Vite + Tailwind CSS + Lucide Icons.
-- **Backend**: Supabase (Auth, PostgreSQL DB, Storage, Edge Functions).
-- **AI Engine**: Python (FastAPI) + PyTorch (EfficientNet-B3 Base) + Grad-CAM Heatmaps.
-- **Integrations**: Clinical AI (Gemini) for patient summaries and heatmap region analysis.
+---
+
+## ⚙️ System Workflow
+
+The system implements a multi-stage logic pipeline for screening.
+
+```mermaid
+flowchart TD
+    A[User uploads fundus image]
+    B[Image quality check]
+    C{Is image valid?}
+    D[Prompt recapture image]
+
+    E[Send image to AI Engine]
+    F[Preprocessing]
+    G[Fundus DR Classification Model]
+    H[Generate DR Score and Confidence]
+    I[Generate Grad-CAM Heatmap]
+
+    J[Send patient data to AIIMS CDSS API]
+    K[Diabetes Detection and Risk Analysis]
+
+    L[Combine Diabetes Risk and Fundus DR Score]
+
+    M[Send combined report to Doctor Dashboard]
+    N[Doctor reviews report and heatmap]
+    O[Doctor annotates posterior and anterior fundus]
+    P[Doctor provides final diagnosis and recommendation]
+
+    Q[Store results in Supabase]
+    R[Generate patient-friendly summary via Gemini API]
+    S[Send SMS notification to patient]
+    T[End]
+
+    A --> B --> C
+    C -->|No| D --> A
+    C -->|Yes| E --> F --> G --> H --> I
+
+    A --> J --> K
+
+    H --> L
+    K --> L
+
+    L --> M --> N --> O --> P --> Q --> R --> S --> T
+```
+
+---
+
+## 👥 User Flow
+
+Designed for ease of use by non-specialists in rural field clinics.
+
+```mermaid
+flowchart TD
+    A[Patient arrives at clinic]
+    B[Health worker logs into system]
+    C[Capture fundus image]
+    D[Enter basic patient details]
+    
+    E[System processes data]
+    F[AI Fundus Analysis]
+    G[AIIMS CDSS Diabetes Analysis]
+    
+    H[Combined risk generated]
+    I[Doctor reviews case]
+    J[Doctor adds annotations and diagnosis]
+    
+    K[Final result shown to patient]
+    L[SMS sent for follow-up]
+    M[End]
+
+    A --> B --> C --> D --> E
+    E --> F
+    E --> G
+    F --> H
+    G --> H
+    H --> I --> J --> K --> L --> M
+```
 
 ---
 
