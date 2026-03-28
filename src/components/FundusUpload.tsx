@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import ImageQualityCheck from './ImageQualityCheck';
 import { toast } from 'sonner';
-import { Camera, Upload, X, Loader2 } from 'lucide-react';
+import { Camera, Upload, X, Loader2, AlertTriangle } from 'lucide-react';
 
 interface FundusUploadProps {
   patientId: string;
@@ -18,6 +18,7 @@ export default function FundusUpload({ patientId, onScreeningCreated }: FundusUp
   const [preview, setPreview] = useState<string | null>(null);
   const [qualityPassed, setQualityPassed] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [processingStep, setProcessingStep] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File) => {
@@ -38,12 +39,15 @@ export default function FundusUpload({ patientId, onScreeningCreated }: FundusUp
     setFile(null);
     setPreview(null);
     setQualityPassed(false);
+    setProcessingStep('');
   };
 
   const handleSubmit = async () => {
     if (!file || !user) return;
     setUploading(true);
     try {
+      // Step 1: Upload image
+      setProcessingStep('Uploading fundus image...');
       const ext = file.name.split('.').pop();
       const path = `${user.id}/${patientId}/${Date.now()}.${ext}`;
       const { error: uploadErr } = await supabase.storage.from('fundus-images').upload(path, file);
@@ -51,6 +55,8 @@ export default function FundusUpload({ patientId, onScreeningCreated }: FundusUp
 
       const { data: { publicUrl } } = supabase.storage.from('fundus-images').getPublicUrl(path);
 
+      // Step 2: Create screening record
+      setProcessingStep('Creating screening record...');
       const { data: screening, error: screenErr } = await (supabase as any).from('screenings').insert({
         patient_id: patientId,
         image_url: publicUrl,
@@ -59,20 +65,31 @@ export default function FundusUpload({ patientId, onScreeningCreated }: FundusUp
       }).select('id').single();
       if (screenErr) throw screenErr;
 
-      // Call AI processing edge function
+      // Step 3: AI Analysis (Fundus DR + CDSS Diabetes Risk + Heatmap)
+      setProcessingStep('Running AI Fundus Analysis + CDSS Diabetes Risk...');
       const { data: aiResponse, error: aiErr } = await supabase.functions.invoke('process-screening', {
         body: { screeningId: (screening as any).id },
       });
 
       if (aiErr) {
         console.error('Edge function error:', aiErr);
-        toast.error('AI processing failed, but screening is saved.');
+        toast.error('AI processing encountered an error. Screening saved for manual review.');
       } else {
         const risk = aiResponse.unifiedRisk?.toUpperCase();
-        const drClass = aiResponse.drClass;
-        toast.success(`Screening completed — Unified Risk: ${risk} (DR Grade: ${drClass}/4)`);
+        const drLabel = aiResponse.drLabel || `Grade ${aiResponse.drClass}`;
+        const confidence = ((aiResponse.confidence || 0) * 100).toFixed(0);
+        
+        toast.success(
+          `Screening complete — ${drLabel} (${confidence}% confidence), Risk: ${risk}`,
+          { duration: 5000 }
+        );
+        
         if (risk === 'HIGH') {
-          toast.warning('Immediate specialist referral recommended.', { duration: 6000 });
+          toast.warning('⚠️ HIGH RISK: Immediate specialist referral recommended!', { duration: 8000 });
+        }
+
+        if (aiResponse.findings) {
+          toast.info(`AI Findings: ${aiResponse.findings}`, { duration: 6000 });
         }
       }
 
@@ -82,6 +99,7 @@ export default function FundusUpload({ patientId, onScreeningCreated }: FundusUp
       toast.error(err.message);
     } finally {
       setUploading(false);
+      setProcessingStep('');
     }
   };
 
@@ -119,8 +137,15 @@ export default function FundusUpload({ patientId, onScreeningCreated }: FundusUp
           </button>
         )}
 
+        {uploading && processingStep && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            <span className="text-sm text-primary font-medium">{processingStep}</span>
+          </div>
+        )}
+
         <Button onClick={handleSubmit} disabled={!file || !qualityPassed || uploading} className="w-full">
-          {uploading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : 'Submit for Screening'}
+          {uploading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : 'Submit for AI Screening'}
         </Button>
       </CardContent>
     </Card>
