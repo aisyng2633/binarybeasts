@@ -36,11 +36,11 @@ export default function ScreeningList({ refreshKey, onViewScreening, showAll }: 
     fetch();
   }, [refreshKey]);
 
-  if (loading) return <div className="text-center py-8 text-muted-foreground animate-pulse">Loading screenings...</div>;
-  if (!screenings.length) return <div className="text-center py-8 text-muted-foreground animate-in border rounded-lg py-12 bg-muted/20">No screenings yet</div>;
+  if (loading) return <div className="text-center py-8 text-muted-foreground">Loading screenings...</div>;
+  if (!screenings.length) return <div className="text-center py-8 text-muted-foreground">No screenings yet</div>;
 
   return (
-    <Card className="glass-card animate-in">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <ClipboardList className="w-5 h-5 text-primary" />

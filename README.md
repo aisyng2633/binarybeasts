@@ -144,30 +144,6 @@ Retinex utilizes a structured PostgreSQL schema optimized for clinical screening
 
 ---
 
-## 🔄 User & Workflow Flow
-
-### 1. Data Capture (Technician / ASHA Worker)
-1. **Patient Registration**: Capture basic vitals and diabetes history.
-2. **Fundus Imaging**: Upload retinal fundus image.
-3. **Quality Validation**: Automatic client-side check for resolution, brightness, and contrast.
-4. **Trigger Analysis**: Once uploaded, a Supabase Edge Function (`process-screening`) is triggered.
-
-### 2. Processing & AI Analysis (Automated)
-1. **Classification**: AI classifies DR grade (0-4) using vision models.
-2. **Systemic Risk**: AIIMS CDSS analysis for diabetes risk based on patient metadata.
-3. **Risk Fusion**: Weighted combination (60% Fundus, 40% CDSS) into a **Unified Risk Score** (Low, Moderate, High).
-4. **Notification**: Automatically sends an SMS to the patient for high-risk cases.
-
-### 3. Review & Reporting (Ophthalmologist)
-1. **Explainable AI (XAI)**: Review heatmaps identifying "Regions of Concern" (e.g., Macula, Optic Disc).
-2. **Clinical Annotations**: Specific sections for Posterior (Vessels/Periphery) and Anterior (Macula/Disk) findings.
-3. **Report Generation**: AI generates two reports:
-    - **Clinical Report**: Professional medical summary for records.
-    - **Patient-Friendly Summary**: Compassionate, plain-language explanation with next steps.
-4. **Final Sign-off**: Doctor saves review and notifies the patient with a personalized link.
-
----
-
 ## ✨ Features & Clinical Impact
 
 ### 🚀 Key Features
