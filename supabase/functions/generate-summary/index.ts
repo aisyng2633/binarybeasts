@@ -13,11 +13,12 @@ serve(async (req) => {
       patientName, age, gender, drClass, drLabel, 
       confidence, diabetesRisk, unifiedRisk, 
       doctorNotes, diagnosis,
-      posteriorAnnotation, anteriorAnnotation
+      posteriorAnnotation, anteriorAnnotation,
+      findings, cdssAnalysis,
     } = await req.json();
 
-    const CLINICAL_AI_API_KEY = Deno.env.get("CLINICAL_AI_API_KEY");
-    if (!CLINICAL_AI_API_KEY) throw new Error("CLINICAL_AI_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const prompt = `Generate a simple, patient-friendly medical summary in plain language (suitable for someone with limited medical knowledge). Keep it under 200 words.
 
@@ -30,6 +31,8 @@ Eye Screening Results:
 
 Clinical Findings:
 ${diagnosis ? `- Final Diagnosis: ${diagnosis}` : ''}
+${findings ? `- AI Findings: ${findings}` : ''}
+${cdssAnalysis ? `- CDSS Analysis: ${cdssAnalysis}` : ''}
 ${posteriorAnnotation ? `- Posterior Retina: ${posteriorAnnotation}` : ''}
 ${anteriorAnnotation ? `- Anterior Retina: ${anteriorAnnotation}` : ''}
 ${doctorNotes ? `- Doctor's Observations: ${doctorNotes}` : ''}
@@ -43,18 +46,17 @@ Include:
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${CLINICAL_AI_API_KEY}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash",
+        model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: "You are a compassionate medical communicator for rural health clinics. Write patient-friendly summaries in simple, reassuring language. If the patient needs to see a specialist, explain why in simple terms. Avoid complex medical jargon." },
           { role: "user", content: prompt },
         ],
       }),
     });
-
 
     if (!response.ok) {
       if (response.status === 429) {
