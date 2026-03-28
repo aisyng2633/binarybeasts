@@ -8,15 +8,6 @@ const corsHeaders = {
 
 const DR_LABELS = ["No DR", "Mild", "Moderate", "Severe", "Proliferative DR"];
 
-const DR_ANALYSIS_PROMPT = `You are an expert ophthalmologist AI. Analyze this fundus image for Diabetic Retinopathy (DR).
-Respond ONLY with valid JSON in this exact format:
-{
-  "dr_class": <0-4>,
-  "confidence": <0.0-1.0>,
-  "findings": "<brief clinical findings>"
-}
-Where dr_class: 0=No DR, 1=Mild, 2=Moderate, 3=Severe, 4=Proliferative DR.`;
-
 async function imageToBase64(imageData: ArrayBuffer): Promise<string> {
   const uint8 = new Uint8Array(imageData);
   let binary = "";
@@ -26,13 +17,65 @@ async function imageToBase64(imageData: ArrayBuffer): Promise<string> {
   return btoa(binary);
 }
 
-// Analyze with Clinical AI Gateway (primary)
-async function analyzeWithClinicalAI(imageBase64: string): Promise<{ dr_class: number; confidence: number; heatmap?: string } | null> {
-  const apiKey = Deno.env.get("CLINICAL_AI_API_KEY");
-  if (!apiKey) return null;
+// Fundus DR Analysis via Lovable AI (vision model)
+async function analyzeFundusWithAI(imageBase64: string, apiKey: string): Promise<{ dr_class: number; confidence: number; findings: string }> {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `You are an expert ophthalmologist AI analyzing a retinal fundus image for Diabetic Retinopathy (DR).
 
+Analyze this fundus image carefully. Look for:
+- Microaneurysms, hemorrhages, hard exudates, cotton wool spots
+- Neovascularization, venous beading, intraretinal microvascular abnormalities
+- Macular edema signs
+
+Respond ONLY with valid JSON:
+{"dr_class": <0-4>, "confidence": <0.0-1.0>, "findings": "<brief clinical findings>"}
+
+dr_class scale: 0=No DR, 1=Mild NPDR, 2=Moderate NPDR, 3=Severe NPDR, 4=Proliferative DR`
+          },
+          {
+            type: "image_url",
+            image_url: { url: `data:image/jpeg;base64,${imageBase64}` }
+          }
+        ]
+      }],
+      temperature: 0.1,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error("[Fundus AI] Error:", response.status, errText);
+    throw new Error(`Fundus AI analysis failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  const jsonMatch = text.match(/\{[\s\S]*?\}/);
+  if (!jsonMatch) throw new Error("Could not parse AI response");
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  return {
+    dr_class: Math.min(4, Math.max(0, Math.round(parsed.dr_class))),
+    confidence: Math.min(1, Math.max(0, parsed.confidence)),
+    findings: parsed.findings || "",
+  };
+}
+
+// Generate Grad-CAM style heatmap description via AI
+async function generateHeatmapAnalysis(imageBase64: string, drClass: number, apiKey: string): Promise<string> {
   try {
-    console.log("[AI] Trying Clinical AI Gateway...");
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -40,122 +83,104 @@ async function analyzeWithClinicalAI(imageBase64: string): Promise<{ dr_class: n
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash",
+        model: "google/gemini-2.5-flash",
         messages: [{
           role: "user",
           content: [
-            { type: "text", text: DR_ANALYSIS_PROMPT },
-            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
+            {
+              type: "text",
+              text: `Analyze this retinal fundus image. The DR classification is ${DR_LABELS[drClass]} (Grade ${drClass}/4).
+
+Identify the KEY REGIONS of concern. For each region describe:
+- Location (e.g., "superior temporal arcade", "macula", "optic disc")
+- Type of lesion found
+- Severity
+
+This will be used to create a clinical annotation overlay. Be precise and clinical.
+Respond as JSON: {"regions": [{"location": "...", "lesion": "...", "severity": "mild|moderate|severe"}]}`
+            },
+            {
+              type: "image_url",
+              image_url: { url: `data:image/jpeg;base64,${imageBase64}` }
+            }
           ]
         }],
-        temperature: 0.1,
+        temperature: 0.2,
       }),
     });
 
-    if (!response.ok) {
-      console.warn("[Clinical AI] Failed:", response.status);
-      return null;
-    }
-
+    if (!response.ok) return "";
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || "";
-    const jsonMatch = text.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) return null;
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    return {
-      dr_class: Math.min(4, Math.max(0, Math.round(parsed.dr_class))),
-      confidence: Math.min(1, Math.max(0, parsed.confidence)),
-    };
-  } catch (e) {
-    console.warn("[Clinical AI] Error:", e);
-    return null;
+    return data.choices?.[0]?.message?.content || "";
+  } catch {
+    return "";
   }
 }
 
-// Fallback: Gemini direct
-async function tryGemini(imageBase64: string): Promise<{ dr_class: number; confidence: number } | null> {
-  const apiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!apiKey) return null;
-
-  try {
-    console.log("[AI Fallback] Trying Gemini...");
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: DR_ANALYSIS_PROMPT },
-              { inline_data: { mime_type: "image/jpeg", data: imageBase64 } }
-            ]
-          }],
-          generationConfig: { temperature: 0.1 }
-        }),
-      }
-    );
-
-    if (!response.ok) return null;
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const jsonMatch = text.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]);
-    return {
-      dr_class: Math.min(4, Math.max(0, Math.round(parsed.dr_class))),
-      confidence: Math.min(1, Math.max(0, parsed.confidence)),
-    };
-  } catch (e) {
-    console.warn("[Gemini] Error:", e);
-    return null;
-  }
-}
-
-async function analyzeWithFallback(imageData: ArrayBuffer): Promise<{ dr_class: number; confidence: number; heatmap?: string; provider: string }> {
-  const imageBase64 = await imageToBase64(imageData);
-
-  // Primary: Clinical AI → Gemini → Mock
-  const clinicalResult = await analyzeWithClinicalAI(imageBase64);
-  if (clinicalResult) return { ...clinicalResult, provider: "clinical-ai" };
-
-  const geminiResult = await tryGemini(imageBase64);
-  if (geminiResult) return { ...geminiResult, provider: "gemini" };
-
-  // Final fallback: mock (with simulated heatmap)
-  console.warn("[AI Fallback] All providers failed, using mock");
-  return {
-    dr_class: Math.floor(Math.random() * 5),
-    confidence: 0.85,
-    provider: "mock",
-    heatmap: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", // Tiny mock pixel
+// AIIMS CDSS Diabetes Risk Analysis via AI
+async function analyzeDiabetesRisk(patient: any, apiKey: string): Promise<{ risk_score: number; analysis: string }> {
+  const patientData = {
+    age: patient?.age || 0,
+    gender: patient?.gender || "unknown",
+    diabetes_history: patient?.diabetes_history || "none reported",
+    name: patient?.name || "Unknown",
   };
-}
 
-// Simulated AIIMS CDSS API integration for systemic diabetes risk analysis
-async function getAIIMSDiabetesRisk(patient: any): Promise<number> {
-  console.log(`[CDSS] Requesting AIIMS CDSS Risk Analysis for Patient: ${patient?.name || 'Unknown'}`);
-  
-  // In a real scenario, this would be a fetch() call to the AIIMS CDSS API
-  // baseURL: https://cdss.aiims.edu/api/v1/risk-analysis
-  
-  let risk = 0.15;
-  if (patient?.age > 45) risk += 0.2;
-  if (patient?.age > 65) risk += 0.15;
-  
-  const history = (patient?.diabetes_history || "").toLowerCase();
-  if (history.includes("yes") || history.includes("type 2") || history.includes("confirmed")) {
-    risk += 0.45;
-  } else if (history.includes("pre") || history.includes("borderline")) {
-    risk += 0.2;
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        {
+          role: "system",
+          content: `You are the AIIMS Clinical Decision Support System (CDSS) for diabetes risk assessment. 
+Analyze patient data and provide a diabetes risk score based on clinical guidelines.
+Consider: age, gender, diabetes history, family history, lifestyle indicators.
+Respond ONLY with valid JSON: {"risk_score": <0.0-1.0>, "analysis": "<brief risk factors>"}`
+        },
+        {
+          role: "user",
+          content: `Assess diabetes risk for this patient:
+- Age: ${patientData.age} years
+- Gender: ${patientData.gender}
+- Diabetes History: ${patientData.diabetes_history}
+
+Provide a risk score (0.0 = no risk, 1.0 = highest risk) based on AIIMS clinical guidelines for diabetic retinopathy screening.`
+        }
+      ],
+      temperature: 0.2,
+    }),
+  });
+
+  if (!response.ok) {
+    console.warn("[CDSS] AI analysis failed, using rule-based fallback");
+    // Fallback: rule-based
+    let risk = 0.15;
+    if (patientData.age > 45) risk += 0.2;
+    if (patientData.age > 65) risk += 0.15;
+    const history = patientData.diabetes_history.toLowerCase();
+    if (history.includes("yes") || history.includes("type 2") || history.includes("confirmed")) risk += 0.45;
+    else if (history.includes("pre") || history.includes("borderline")) risk += 0.2;
+    if (patientData.gender === "male") risk += 0.05;
+    return { risk_score: Math.min(Math.max(risk, 0.05), 0.98), analysis: "Rule-based assessment" };
   }
-  
-  if (patient?.gender === "male") risk += 0.05;
-  
-  // Simulate some variance
-  const variance = (Math.random() * 0.1) - 0.05;
-  return Math.min(Math.max(risk + variance, 0.05), 0.98);
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  const jsonMatch = text.match(/\{[\s\S]*?\}/);
+  if (!jsonMatch) {
+    return { risk_score: 0.3, analysis: "Could not parse CDSS response" };
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  return {
+    risk_score: Math.min(1, Math.max(0, parsed.risk_score)),
+    analysis: parsed.analysis || "",
+  };
 }
 
 serve(async (req) => {
@@ -164,6 +189,9 @@ serve(async (req) => {
   try {
     const { screeningId } = await req.json();
     if (!screeningId) throw new Error("screeningId is required");
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -199,62 +227,44 @@ serve(async (req) => {
     }
 
     console.log(`[Processing] Screening ${screeningId}, image size: ${imageData.byteLength}`);
+    const imageBase64 = await imageToBase64(imageData);
 
-    // Step 1: AI DR Classification
-    let aiData: { dr_class: number; confidence: number; heatmap?: string; provider: string };
-    const AI_ENGINE_URL = Deno.env.get("AI_ENGINE_URL") || "";
+    // === PARALLEL AI ANALYSIS ===
+    // Step 1: Fundus DR Classification (AI Vision)
+    // Step 2: AIIMS CDSS Diabetes Risk Analysis (AI Text)
+    const [drResult, cdssResult] = await Promise.all([
+      analyzeFundusWithAI(imageBase64, LOVABLE_API_KEY),
+      analyzeDiabetesRisk(screening.patients, LOVABLE_API_KEY),
+    ]);
 
-    if (AI_ENGINE_URL) {
-      try {
-        const formData = new FormData();
-        formData.append("file", new Blob([imageData], { type: "image/jpeg" }), "fundus.jpg");
-        const aiResponse = await fetch(`${AI_ENGINE_URL}/predict`, { method: "POST", body: formData });
-        if (aiResponse.ok) {
-          const result = await aiResponse.json();
-          aiData = { 
-            dr_class: result.dr_class, 
-            confidence: result.confidence, 
-            heatmap: result.heatmap,
-            provider: "ai-engine" 
-          };
-        } else {
-          aiData = await analyzeWithFallback(imageData);
-        }
-      } catch {
-        aiData = await analyzeWithFallback(imageData);
-      }
-    } else {
-      aiData = await analyzeWithFallback(imageData);
-    }
+    console.log(`[Fundus AI] DR Class: ${drResult.dr_class}, Confidence: ${drResult.confidence.toFixed(3)}, Findings: ${drResult.findings}`);
+    console.log(`[CDSS] Diabetes Risk: ${cdssResult.risk_score.toFixed(3)}, Analysis: ${cdssResult.analysis}`);
 
-    console.log(`[AI] Provider: ${aiData.provider}, DR: ${aiData.dr_class}, Confidence: ${aiData.confidence.toFixed(3)}`);
+    // Step 3: Generate heatmap analysis (non-blocking)
+    const heatmapAnalysis = await generateHeatmapAnalysis(imageBase64, drResult.dr_class, LOVABLE_API_KEY);
 
-    // Step 2: CDSS Diabetes Risk (AIIMS integration)
-    const diabetesRisk = await getAIIMSDiabetesRisk(screening.patients);
-
-    // Step 3: Risk Fusion (Weights: AI DR 60%, CDSS Risk 40%)
+    // Step 4: Risk Fusion (Weights: AI DR 60%, CDSS Risk 40%)
     let unifiedRisk: "low" | "moderate" | "high" = "low";
-    const drNormalized = aiData.dr_class / 4; // 0 to 1
-    const combinedScore = (drNormalized * 0.6) + (diabetesRisk * 0.4);
-    
-    // High Risk if classification is Severe/Proliferative OR combined score is high
-    if (aiData.dr_class >= 3 || combinedScore >= 0.65) {
+    const drNormalized = drResult.dr_class / 4;
+    const combinedScore = (drNormalized * 0.6) + (cdssResult.risk_score * 0.4);
+
+    if (drResult.dr_class >= 3 || combinedScore >= 0.65) {
       unifiedRisk = "high";
-    } else if (aiData.dr_class >= 1 || combinedScore >= 0.35) {
+    } else if (drResult.dr_class >= 1 || combinedScore >= 0.35) {
       unifiedRisk = "moderate";
     }
 
     console.log(`[Fusion] Combined Score: ${combinedScore.toFixed(3)} -> Unified Risk: ${unifiedRisk.toUpperCase()}`);
 
-    // Step 4: Save results
+    // Step 5: Save results to database
     const { error: aiResultsError } = await supabaseClient
       .from("ai_results")
       .upsert({
         screening_id: screeningId,
-        dr_class: aiData.dr_class,
-        confidence_score: aiData.confidence,
-        heatmap_url: aiData.heatmap || "",
-        diabetes_risk_score: diabetesRisk,
+        dr_class: drResult.dr_class,
+        confidence_score: drResult.confidence,
+        heatmap_url: heatmapAnalysis || "",
+        diabetes_risk_score: cdssResult.risk_score,
         unified_risk: unifiedRisk,
       });
 
@@ -262,39 +272,60 @@ serve(async (req) => {
 
     await supabaseClient.from("screenings").update({ status: "completed" }).eq("id", screeningId);
 
-    // Step 5: SMS Notification (Twilio / Fast2SMS Integration Placeholder)
+    // Step 6: SMS Notification for high-risk cases
     const contact = screening.patients?.contact;
-    if (contact) {
-      const hospitalName = "Retinex Screening Clinic";
-      const riskMsg = unifiedRisk === "high" ? "URGENT: High Risk detected. Please visit an ophthalmologist within 7 days." : 
-                      unifiedRisk === "moderate" ? "MODERATE Risk: Please schedule a follow-up visit within 1 month." : 
-                      "LOW Risk: Routine eye check-up recommended every 12 months.";
-      
-      const smsMessage = `Health Alert: ${screening.patients.name}, your Diabetic Retinopathy screening at ${hospitalName} is complete. ${riskMsg}`;
-      
-      console.log(`[SMS] Sending to ${contact} via SMS API Gateway...`);
-      console.log(`[SMS CONTENT] ${smsMessage}`);
-      
-      // In production:
-      // await fetch("https://api.fast2sms.com/dev/bulkV2", { 
-      //   method: "POST", 
-      //   headers: { "authorization": Deno.env.get("FAST2SMS_KEY") },
-      //   body: JSON.stringify({ message: smsMessage, numbers: contact })
-      // });
+    if (contact && unifiedRisk === "high") {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+        await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${anonKey}`,
+          },
+          body: JSON.stringify({
+            phone: contact,
+            patientName: screening.patients.name,
+            riskLevel: unifiedRisk,
+            drGrade: drResult.dr_class,
+          }),
+        });
+      } catch (smsErr) {
+        console.warn("[SMS] Failed to send notification:", smsErr);
+      }
     }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      unifiedRisk, 
-      provider: aiData.provider, 
-      drClass: aiData.dr_class,
-      diabetesRisk 
+    return new Response(JSON.stringify({
+      success: true,
+      unifiedRisk,
+      drClass: drResult.dr_class,
+      drLabel: DR_LABELS[drResult.dr_class],
+      confidence: drResult.confidence,
+      diabetesRisk: cdssResult.risk_score,
+      findings: drResult.findings,
+      cdssAnalysis: cdssResult.analysis,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (e) {
     console.error("Error in process-screening:", e);
+    
+    // Handle rate limit and payment errors
+    if (e instanceof Error) {
+      if (e.message.includes("429")) {
+        return new Response(JSON.stringify({ error: "AI rate limited, please try again shortly." }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (e.message.includes("402")) {
+        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Internal Server Error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
