@@ -102,3 +102,10 @@
     font-family: 'Space Grotesk', system-ui, sans-serif;
   }
 }
+
+@media print {
+  body { background: white !important; }
+  header, .no-print { display: none !important; }
+  .print\:space-y-3 > * + * { margin-top: 0.75rem; }
+  .print\:border { border: 1px solid currentColor; }
+}
