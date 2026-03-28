@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -77,13 +77,10 @@ export default function ImageQualityCheck({ file, onPass, onRetake }: ImageQuali
     }
   };
 
-  // Auto-check on mount or file change
-  useEffect(() => {
-    if (file) {
-      setResult(null);
-      checkQuality();
-    }
-  }, [file]);
+  // Auto-check on mount
+  if (!checking && !result) {
+    checkQuality();
+  }
 
   return (
     <div className="p-4 rounded-lg border bg-card space-y-3">
